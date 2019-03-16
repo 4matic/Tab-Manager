@@ -1,12 +1,20 @@
 <html>
 	<head>
 		<link rel="stylesheet" type="text/css" href="css/popup.css"/>
-		<script src="lib/react.min.js"></script>
-		<script src="lib/TabManager.js"></script>
-		<script src="lib/Window.js"></script>
-		<script src="lib/Tab.js"></script>
-		<script src="lib/popup.js"></script>
+
+		<!-- Used in development only -->
+		<!--<script src="lib/react.development.js"></script>-->
+		<!--<script src="lib/react-dom.development.js"></script>-->
+
+		<script src="lib/react.production.min.js"></script>
+		<script src="lib/react-dom.production.min.js"></script>
+
+		<script src="dist/TabManager.js"></script>
+		<script src="dist/Window.js"></script>
+		<script src="dist/Tab.js"></script>
+		<script src="dist/popup.js"></script>
 	</head>
 	<body>
+		<div id="app"></div>
 	</body>
 </html>
