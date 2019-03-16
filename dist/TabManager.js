@@ -14,6 +14,15 @@ var TabManager = function (_React$Component) {
 
 		var _this = _possibleConstructorReturn(this, (TabManager.__proto__ || Object.getPrototypeOf(TabManager)).call(this, props));
 
+		_this.getFilterClasses = function (className, filter) {
+			var classes = "icon filteraction " + className;
+			if (!filter) filter = className;
+			if (_this.state.appliedFilters[filter]) {
+				classes += " active";
+			}
+			return classes;
+		};
+
 		_this.deleteTabs = function () {
 			var tabs = Object.keys(_this.state.selection).map(function (id) {
 				return _this.state.tabsbyid[id];
@@ -137,6 +146,7 @@ var TabManager = function (_React$Component) {
 			selection: {},
 			hiddenTabs: {},
 			tabsbyid: {},
+			appliedFilters: {},
 			windowsbyid: {},
 			filterTabs: !!localStorage["filter-tabs"]
 		};
@@ -155,6 +165,13 @@ var TabManager = function (_React$Component) {
 			return React.createElement(
 				"div",
 				null,
+				React.createElement(
+					"div",
+					{ className: "window filterbox" },
+					React.createElement("div", { className: this.getFilterClasses('muted'), title: "Muted tabs", onClick: this.filterTabs.bind(this, 'muted') }),
+					React.createElement("div", { className: this.getFilterClasses('playingaudio', 'audible'), title: "Audible tabs", onClick: this.filterTabs.bind(this, 'audible') }),
+					React.createElement("div", { className: this.getFilterClasses('pinned'), title: "Pinned tabs", onClick: this.filterTabs.bind(this, 'pinned') })
+				),
 				this.state.windows.map(function (window) {
 					return React.createElement(Window, {
 						key: "window" + window.id,
@@ -265,8 +282,13 @@ var TabManager = function (_React$Component) {
 
 			for (var i = 0; i < tabs.length; i++) {
 				(function (t) {
-					chrome.tabs.move(t.id, { windowId: tab.windowId, index: index }, function () {
-						chrome.tabs.update(t.id, { pinned: t.pinned });
+					chrome.tabs.move(t.id, {
+						windowId: tab.windowId,
+						index: index
+					}, function () {
+						chrome.tabs.update(t.id, {
+							pinned: t.pinned
+						});
 					});
 				})(tabs[i]);
 			}
@@ -274,7 +296,100 @@ var TabManager = function (_React$Component) {
 	}, {
 		key: "filterTabs",
 		value: function filterTabs(type) {
-			console.log("filterTabs type", type);
+			var _this4 = this;
+
+			var idList = void 0;
+			var appliedFilters = [];
+			var conditions = [];
+			var prevValue = !!this.state.appliedFilters[type];
+
+			this.state.appliedFilters[type] = !prevValue;
+
+			var filters = Object.keys(this.state.appliedFilters);
+			for (var i = 0; i < filters.length; i++) {
+				var key = filters[i];
+				if (this.state.appliedFilters[key]) {
+					appliedFilters.push(key);
+				}
+			}
+			var _iteratorNormalCompletion = true;
+			var _didIteratorError = false;
+			var _iteratorError = undefined;
+
+			try {
+				for (var _iterator = appliedFilters[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+					var filter = _step.value;
+
+					var condition = void 0;
+					if (filter === "audible") {
+						condition = function condition(tab) {
+							return tab.audible;
+						};
+					} else if (filter === "pinned") {
+						condition = function condition(tab) {
+							return tab.pinned;
+						};
+					} else if (filter === "muted") {
+						condition = function condition(tab) {
+							return tab.mutedInfo && tab.mutedInfo.muted;
+						};
+					}
+					conditions.push(condition);
+				}
+			} catch (err) {
+				_didIteratorError = true;
+				_iteratorError = err;
+			} finally {
+				try {
+					if (!_iteratorNormalCompletion && _iterator.return) {
+						_iterator.return();
+					}
+				} finally {
+					if (_didIteratorError) {
+						throw _iteratorError;
+					}
+				}
+			}
+
+			var hiddenCount = this.state.hiddenCount || 0;
+			if (appliedFilters.length) {
+				var lastSearchLen = this.state.searchLen;
+				if (!lastSearchLen) {
+					idList = this.state.tabsbyid;
+				} else if (lastSearchLen > searchLen) {
+					idList = this.state.hiddenTabs;
+				} else if (lastSearchLen < searchLen) {
+					idList = this.state.selection;
+				} else {
+					return;
+				}
+
+				var _loop = function _loop(id) {
+					var tab = _this4.state.tabsbyid[id];
+					console.log("tab", tab);
+					var condition = conditions.reduce(function (acc, condition) {
+						return acc || condition.call(_this4, tab);
+					}, false);
+					if (condition) {
+						hiddenCount -= _this4.state.hiddenTabs[id] || 0;
+						_this4.state.selection[id] = true;
+						delete _this4.state.hiddenTabs[id];
+					} else {
+						hiddenCount += 1 - (_this4.state.hiddenTabs[id] || 0);
+						_this4.state.hiddenTabs[id] = true;
+						delete _this4.state.selection[id];
+					}
+				};
+
+				for (var id in idList) {
+					_loop(id);
+				}
+			} else {
+				this.state.selection = {};
+				this.state.hiddenTabs = {};
+				hiddenCount = 0;
+			}
+			this.state.hiddenCount = hiddenCount;
 			this.forceUpdate();
 		}
 	}]);

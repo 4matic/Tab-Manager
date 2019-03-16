@@ -7,6 +7,7 @@ class TabManager extends React.Component {
 			selection: {},
 			hiddenTabs: {},
 			tabsbyid: {},
+			appliedFilters: {},
 			windowsbyid: {},
 			filterTabs: !!localStorage["filter-tabs"]
 		};
@@ -19,9 +20,11 @@ class TabManager extends React.Component {
 		const selectedTabsCount = Object.keys(this.state.selection).length;
 		return (
 			<div>
-				{/*<div className={"window filterbox"}>*/}
-					{/*<div className={"icon filteraction playingaudio"} title={"Audible tabs"} onClick={this.filterTabs.bind(this, 'audible')} />*/}
-				{/*</div>*/}
+				<div className={"window filterbox"}>
+					<div className={this.getFilterClasses('muted')} title={"Muted tabs"} onClick={this.filterTabs.bind(this, 'muted')} />
+					<div className={this.getFilterClasses('playingaudio', 'audible')} title={"Audible tabs"} onClick={this.filterTabs.bind(this, 'audible')} />
+					<div className={this.getFilterClasses('pinned')} title={"Pinned tabs"} onClick={this.filterTabs.bind(this, 'pinned')} />
+				</div>
 				{this.state.windows.map(window => (
 					<Window
 						key={"window"+window.id}
@@ -53,6 +56,15 @@ class TabManager extends React.Component {
 			</div>
 		);
 	}
+
+	getFilterClasses = (className, filter) => {
+		let classes = `icon filteraction ${className}`;
+		if (!filter) filter = className;
+		if (this.state.appliedFilters[filter]) {
+			classes += " active";
+		}
+		return classes;
+	};
 
 	componentDidMount() {
 		const box = this.searchBox.current;
@@ -219,14 +231,19 @@ class TabManager extends React.Component {
 	}
 
 	drop(id, before) {
-		var tab = this.state.tabsbyid[id];
-		var tabs = Object.keys(this.state.selection).map(id => this.state.tabsbyid[id]);
-		var index = tab.index + (before ? 0 : 1);
+		const tab = this.state.tabsbyid[id];
+		const tabs = Object.keys(this.state.selection).map(id => this.state.tabsbyid[id]);
+		const index = tab.index + (before ? 0 : 1);
 
-		for (var i = 0; i < tabs.length; i++) {
+		for (let i = 0; i < tabs.length; i++) {
 			(function (t) {
-				chrome.tabs.move(t.id, {windowId: tab.windowId, index: index}, function () {
-					chrome.tabs.update(t.id, {pinned: t.pinned});
+				chrome.tabs.move(t.id, {
+					windowId: tab.windowId,
+					index: index
+				}, function () {
+					chrome.tabs.update(t.id, {
+						pinned: t.pinned
+					});
 				});
 			})(tabs[i]);
 		}
@@ -239,7 +256,63 @@ class TabManager extends React.Component {
 	};
 
 	filterTabs(type) {
-		console.log("filterTabs type", type);
+		let idList;
+		const appliedFilters = [];
+		let conditions = [];
+		const prevValue = !!this.state.appliedFilters[type];
+
+		this.state.appliedFilters[type] = !prevValue;
+
+		const filters = Object.keys(this.state.appliedFilters);
+		for (let i = 0; i < filters.length; i++) {
+			const key = filters[i];
+			if (this.state.appliedFilters[key]) {
+				appliedFilters.push(key);
+			}
+		}
+		for (let filter of appliedFilters) {
+			let condition;
+			if (filter === "audible") {
+				condition = (tab) => tab.audible;
+			} else if (filter === "pinned") {
+				condition = (tab) => tab.pinned;
+			} else if (filter === "muted") {
+				condition = (tab) => tab.mutedInfo && tab.mutedInfo.muted;
+			}
+			conditions.push(condition);
+		}
+		let hiddenCount = this.state.hiddenCount || 0;
+		if(appliedFilters.length) {
+			const lastSearchLen = this.state.searchLen;
+			if (!lastSearchLen) {
+				idList = this.state.tabsbyid;
+			} else if (lastSearchLen > searchLen) {
+				idList = this.state.hiddenTabs;
+			} else if (lastSearchLen < searchLen) {
+				idList = this.state.selection;
+			} else {
+				return;
+			}
+			for (let id in idList) {
+				const tab = this.state.tabsbyid[id];
+				console.log("tab", tab);
+				const condition = conditions.reduce((acc, condition) => acc || condition.call(this, tab), false);
+				if (condition) {
+					hiddenCount -= (this.state.hiddenTabs[id] || 0);
+					this.state.selection[id] = true;
+					delete this.state.hiddenTabs[id];
+				} else {
+					hiddenCount += 1 - (this.state.hiddenTabs[id] || 0);
+					this.state.hiddenTabs[id] = true;
+					delete this.state.selection[id];
+				}
+			}
+		} else {
+			this.state.selection = {};
+			this.state.hiddenTabs = {};
+			hiddenCount = 0;
+		}
+		this.state.hiddenCount = hiddenCount;
 		this.forceUpdate();
 	}
 }
